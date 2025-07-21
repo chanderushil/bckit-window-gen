@@ -15,17 +15,18 @@ def get_all_users():
     return response.data or []
 
 def get_holidays(user_id):
-    response = supabase.table("saved_holidays")
+    response = (
+        supabase.table("saved_holidays")
         .select("holiday_id, holidays(date)")
         .eq("user_id", user_id)
         .execute()
+    )
 
     return {
         datetime.fromisoformat(item["holidays"]["date"]).date()
         for item in response.data or []
         if "holidays" in item and item["holidays"].get("date")
     }
-
 
 def get_time_off(user_id):
     response = supabase.table("time_off").select("type, allowed").eq("user_id", user_id).execute()
