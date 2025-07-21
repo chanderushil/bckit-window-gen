@@ -1,16 +1,14 @@
-name: Generate Travel Windows
+name: Generate Travel Window
 
 on:
-  workflow_dispatch:         # Allow manual trigger from GitHub UI
-  schedule:
-    - cron: '0 9 * * 1'       # Run every Monday at 9AM UTC
+  repository_dispatch:
+    types: [new_time_off_or_holiday]
 
 jobs:
   generate:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -19,10 +17,9 @@ jobs:
           python-version: 3.11
 
       - name: Install dependencies
-        run: |
-          pip install supabase
+        run: pip install -r requirements.txt
 
-      - name: Run generator
+      - name: Run travel window generator
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
