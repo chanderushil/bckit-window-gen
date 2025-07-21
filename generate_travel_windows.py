@@ -65,42 +65,62 @@ def generate_and_insert_windows(user_id, holidays, time_off):
         print(f"Skipping user {user_id}: already has travel windows")
         return
 
+    total_pto_available = sum(time_off.values())
     used_time_off = 0
+    long_trip_count = 0
+    max_long_trips = 2
     windows_added = 0
     used_dates = set()
     current = TODAY
 
     while current <= YEAR_END:
-        if current.weekday() == 4:  # Friday
+        if current.weekday() == 4:  # Friday anchor
             candidates = generate_candidate_windows(current, holidays)
             for window in candidates:
                 total_days = (window["end"] - window["start"]).days + 1
+                pto_days = window["days_off_needed"]
 
+                # Rule: skip weekend-only trips (must be > 3 days)
                 if total_days < 4:
-                    continue  # Skip weekends or short trips
-
-                if used_time_off + window["days_off_needed"] > sum(time_off.values()):
                     continue
 
+                # Rule: skip overly expensive trips
+                if pto_days > 5:
+                    continue
+
+                # Rule: limit long PTO windows
+                if pto_days > 3:
+                    if long_trip_count >= max_long_trips:
+                        continue
+                # else this is a 2–3 day trip, allowed
+
+                # Rule: skip if not enough PTO left
+                if used_time_off + pto_days > total_pto_available:
+                    continue
+
+                # Rule: no overlapping travel dates
                 window_range = {window["start"] + timedelta(days=i) for i in range(total_days)}
                 if used_dates & window_range:
-                    continue  # Overlaps with a previous window
+                    continue
 
-                # Passed all checks — insert
+                # ✅ All clear — insert window
                 supabase.table("windows").insert({
                     "user_id": user_id,
                     "startdate": window["start"].isoformat(),
                     "enddate": window["end"].isoformat(),
-                    "days_used": window["days_off_needed"]
+                    "days_used": pto_days
                 }).execute()
 
                 used_dates.update(window_range)
-                used_time_off += window["days_off_needed"]
+                used_time_off += pto_days
+                if pto_days > 3:
+                    long_trip_count += 1
                 windows_added += 1
 
         current += timedelta(days=1)
 
-    print(f"✅ Generated {windows_added} non-overlapping travel windows for user {user_id}")
+    print(f"✅ {windows_added} travel windows added for user {user_id} (long trips used: {long_trip_count})")
+
 
 def main():
     users = get_all_users()
