@@ -29,8 +29,13 @@ def get_holidays(user_id):
     }
 
 def get_time_off(user_id):
-    response = supabase.table("time_off").select("type, allowed").eq("user_id", user_id).execute()
-    return {item["type"]: item["allowed"] for item in response.data or []}
+    response = (
+        supabase.table("time_off")
+        .select("type, qty")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return {item["type"]: item["qty"] for item in response.data or []}
 
 def user_has_windows(user_id):
     response = supabase.table("windows").select("id").eq("user_id", user_id).limit(1).execute()
