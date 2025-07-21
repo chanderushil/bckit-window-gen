@@ -4,7 +4,7 @@ from supabase import create_client, Client
 
 # Load Supabase credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")  # Needs service_role key
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")  # service_role key
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 TODAY = date.today()
@@ -22,6 +22,10 @@ def get_time_off(user_id):
     response = supabase.table("time_off").select("type, allowed").eq("user_id", user_id).execute()
     return {item["type"]: item["allowed"] for item in response.data or []}
 
+def user_has_windows(user_id):
+    response = supabase.table("windows").select("id").eq("user_id", user_id).limit(1).execute()
+    return len(response.data or []) > 0
+
 def generate_candidate_windows(start_day, holidays):
     days_to_check = [0, 1, 2]
     windows = []
@@ -30,7 +34,7 @@ def generate_candidate_windows(start_day, holidays):
         range_days = (end_day - start_day).days + 1
         days_off_needed = sum(
             1 for i in range(range_days)
-            if (start_day + timedelta(days=i)).weekday() not in [5, 6]
+            if (start_day + timedelta(days=i)).weekday() not in [5, 6]  # Not Sat/Sun
             and (start_day + timedelta(days=i)) not in holidays
         )
         if days_off_needed <= offset:
@@ -41,26 +45,20 @@ def generate_candidate_windows(start_day, holidays):
             })
     return windows
 
-def window_already_exists(user_id, startdate, enddate):
-    response = supabase.table("windows").select("id") \
-        .eq("user_id", user_id) \
-        .eq("startdate", startdate.isoformat()) \
-        .eq("enddate", enddate.isoformat()) \
-        .execute()
-    return len(response.data or []) > 0
-
 def generate_and_insert_windows(user_id, holidays, time_off):
+    if user_has_windows(user_id):
+        print(f"Skipping user {user_id}: already has travel windows")
+        return
+
     used_time_off = 0
     windows_added = 0
-
     current = TODAY
+
     while current <= YEAR_END:
-        if current.weekday() == 4:
+        if current.weekday() == 4:  # Friday
             candidates = generate_candidate_windows(current, holidays)
             for window in candidates:
                 if used_time_off + window["days_off_needed"] > sum(time_off.values()):
-                    continue
-                if window_already_exists(user_id, window["start"], window["end"]):
                     continue
                 supabase.table("windows").insert({
                     "user_id": user_id,
@@ -71,7 +69,7 @@ def generate_and_insert_windows(user_id, holidays, time_off):
                 windows_added += 1
         current += timedelta(days=1)
 
-    print(f"Generated {windows_added} windows for user {user_id}")
+    print(f"✅ Generated {windows_added} windows for user {user_id}")
 
 def main():
     users = get_all_users()
