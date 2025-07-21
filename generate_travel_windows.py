@@ -67,24 +67,40 @@ def generate_and_insert_windows(user_id, holidays, time_off):
 
     used_time_off = 0
     windows_added = 0
+    used_dates = set()
     current = TODAY
 
     while current <= YEAR_END:
         if current.weekday() == 4:  # Friday
             candidates = generate_candidate_windows(current, holidays)
             for window in candidates:
+                total_days = (window["end"] - window["start"]).days + 1
+
+                if total_days < 4:
+                    continue  # Skip weekends or short trips
+
                 if used_time_off + window["days_off_needed"] > sum(time_off.values()):
                     continue
+
+                window_range = {window["start"] + timedelta(days=i) for i in range(total_days)}
+                if used_dates & window_range:
+                    continue  # Overlaps with a previous window
+
+                # Passed all checks — insert
                 supabase.table("windows").insert({
                     "user_id": user_id,
                     "startdate": window["start"].isoformat(),
-                    "enddate": window["end"].isoformat()
+                    "enddate": window["end"].isoformat(),
+                    "days_used": window["days_off_needed"]
                 }).execute()
+
+                used_dates.update(window_range)
                 used_time_off += window["days_off_needed"]
                 windows_added += 1
+
         current += timedelta(days=1)
 
-    print(f"✅ Generated {windows_added} windows for user {user_id}")
+    print(f"✅ Generated {windows_added} non-overlapping travel windows for user {user_id}")
 
 def main():
     users = get_all_users()
